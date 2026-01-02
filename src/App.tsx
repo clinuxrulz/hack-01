@@ -4,9 +4,9 @@ import { CompositeTilemap, Tilemap } from '@pixi/tilemap';
 import { Button, FancyButton } from "@pixi/ui";
 
 enum CellType {
-  Water = 1,
-  Sand = 2,
-  Grass = 3,
+  Water = 0,
+  Sand = 1,
+  Grass = 2,
 };
 
 const App: Component = () => {
@@ -110,7 +110,12 @@ const App: Component = () => {
             return;
           }
           let oldVal = map[row][col];
-          let newVal = insertCellType;
+          let newVal: CellType;
+          if (insertCellType == CellType.Water) {
+            newVal = 0;
+          } else {
+            newVal = oldVal | insertCellType;
+          }
           if (newVal === oldVal) {
             return;
           }
@@ -238,36 +243,43 @@ function updateTilemap(tilemap: CompositeTilemap, sandTileset: Texture, grassTil
       let blCell = nextRow[j];
       let brCell = nextRow[j+1];
       let sandIdx
-        = (tlCell == CellType.Sand ? 1 : 0)
-        | (trCell == CellType.Sand ? 2 : 0)
-        | (blCell == CellType.Sand ? 4 : 0)
-        | (brCell == CellType.Sand ? 8 : 0);
+        = (tlCell & CellType.Sand ? 1 : 0)
+        | (trCell & CellType.Sand ? 2 : 0)
+        | (blCell & CellType.Sand ? 4 : 0)
+        | (brCell & CellType.Sand ? 8 : 0);
       let grassIdx
-        = (tlCell == CellType.Grass ? 1 : 0)
-        | (trCell == CellType.Grass ? 2 : 0)
-        | (blCell == CellType.Grass ? 4 : 0)
-        | (brCell == CellType.Grass ? 8 : 0);
-      let idx: number;
-      let tileset: Texture;
-      if (grassIdx != 0) {
-        idx = grassIdx;
-        tileset = grassTileset;
-      } else {
-        idx = sandIdx;
-        tileset = sandTileset;
+        = (tlCell & CellType.Grass ? 1 : 0)
+        | (trCell & CellType.Grass ? 2 : 0)
+        | (blCell & CellType.Grass ? 4 : 0)
+        | (brCell & CellType.Grass ? 8 : 0);
+      if (grassIdx != 15) {
+        let coords = tilesetCoords[sandIdx];
+        tilemap.tile(
+          sandTileset,
+          atX,
+          atY,
+          {
+            u: coords[0],
+            v: coords[1],
+            tileWidth: 64,
+            tileHeight: 64,
+          },
+        );
       }
-      let coords = tilesetCoords[idx];
-      tilemap.tile(
-        tileset,
-        atX,
-        atY,
-        {
-          u: coords[0],
-          v: coords[1],
-          tileWidth: 64,
-          tileHeight: 64,
-        },
-      );
+      {
+        let coords = tilesetCoords[grassIdx];
+        tilemap.tile(
+          grassTileset,
+          atX,
+          atY,
+          {
+            u: coords[0],
+            v: coords[1],
+            tileWidth: 64,
+            tileHeight: 64,
+          },
+        );
+      }
     }
   }
 }
