@@ -1,15 +1,18 @@
-import { Application, Assets, Sprite, Texture } from "pixi.js";
+import { Application, Assets, Graphics, Sprite, Text, Texture } from "pixi.js";
 import { Component, createSignal, onCleanup, onMount } from "solid-js";
 import { CompositeTilemap, Tilemap } from '@pixi/tilemap';
+import { Button, FancyButton } from "@pixi/ui";
 
 enum CellType {
   Water = 1,
   Sand = 2,
+  Grass = 3,
 };
 
 const App: Component = () => {
   const initMapRows = 50;
   const initMapCols = 50;
+  let insertCellType = CellType.Sand;
   let map: CellType[][] = [];
   for (let i = 0; i < initMapRows; ++i) {
     let row: CellType[] = [];
@@ -43,7 +46,7 @@ const App: Component = () => {
   const app = new Application();
   let babyMeltySprite: Sprite | undefined = undefined;
   let [ isLoading, setIsLoading, ] = createSignal(true);
-  let tilemap: Tilemap | undefined = undefined;
+  let tilemap: CompositeTilemap | undefined = undefined;
   onMount(() => {
     let canvas2 = canvas();
     if (canvas2 == undefined) {
@@ -73,9 +76,13 @@ const App: Component = () => {
       });
       const babyMeltyTexture = await Assets.load<Texture>("./baby_melty.png");
       babyMeltySprite = new Sprite(babyMeltyTexture);
-      const tileset = await Assets.load<Texture>("./Sprite-0001.png");
-      tilemap = new Tilemap(tileset.source);
-      updateTilemap(tilemap, tileset, map);
+      const sandTileset = await Assets.load<Texture>("./Sprite-0001.png");
+      const grassTileset = await Assets.load<Texture>("./Sprite-0002.png");
+      tilemap = new CompositeTilemap([
+        sandTileset.source,
+        grassTileset.source,
+      ]);
+      updateTilemap(tilemap, sandTileset, grassTileset, map);
       {
         app.stage.eventMode = "static";
         let pointerDownId: number | undefined = undefined;
@@ -102,10 +109,15 @@ const App: Component = () => {
           if (row < 0 || row >= initMapRows) {
             return;
           }
-          map[row][col] = CellType.Sand;
+          let oldVal = map[row][col];
+          let newVal = insertCellType;
+          if (newVal === oldVal) {
+            return;
+          }
+          map[row][col] = newVal;
           app.stage.removeChild(tilemap);
-          tilemap = new Tilemap(tileset.source);
-          updateTilemap(tilemap, tileset, map);
+          tilemap = new CompositeTilemap([sandTileset.source, grassTileset.source]);
+          updateTilemap(tilemap, sandTileset, grassTileset, map);
           app.stage.addChild(tilemap);
         });
       }
@@ -114,6 +126,88 @@ const App: Component = () => {
       babyMeltySprite.zIndex = 1;
       app.stage.sortableChildren = true;
       app.stage.addChild(babyMeltySprite);
+      const createDefaultView = () => 
+        new Graphics()
+          .rect(0, 0, 200, 60)
+          .fill(0x007bff) // Blue
+          .stroke({ width: 2, color: 0xffffff })
+          .circle(20, 30, 8); // Add a small decorative circle
+      const createHoverView = () => 
+        new Graphics()
+          .rect(0, 0, 200, 60)
+          .fill(0x0056b3) // Darker blue on hover
+          .stroke({ width: 3, color: 0xffff00 }); // Yellow stroke on hover
+      const createPressedView = () =>
+        new Graphics()
+          .rect(0, 0, 200, 60)
+          .fill(0x003366); // Even darker blue when pressed
+      const createDefaultViewY = () => 
+        new Graphics()
+          .rect(0, 0, 200, 60)
+          .fill(0xffeb3b) // Bright Yellow
+          .stroke({ width: 2, color: 0x000000 }); // Black stroke
+      const createHoverViewY = () => 
+        new Graphics()
+          .rect(0, 0, 200, 60)
+          .fill(0xfbc02d) // Darker yellow on hover
+          .stroke({ width: 3, color: 0x555555 }); // Grey stroke on hover
+      const createPressedViewY = () =>
+          new Graphics()
+              .rect(0, 0, 200, 60)
+              .fill(0xf9a825); // Even darker yellow when pressed
+      const createDefaultViewG = () => 
+        new Graphics()
+          .rect(0, 0, 200, 60)
+          .fill(0x4CAF50) // Green
+          .stroke({ width: 2, color: 0xFFFFFF }); // White stroke
+      const createHoverViewG = () => 
+        new Graphics()
+          .rect(0, 0, 200, 60)
+          .fill(0x388E3C) // Darker green on hover
+          .stroke({ width: 3, color: 0xFFFF00 }); // Yellow stroke on hover for contrast
+      const createPressedViewG = () =>
+        new Graphics()
+          .rect(0, 0, 200, 60)
+          .fill(0x2E7D32);
+      let waterButton = new FancyButton({
+        defaultView: createDefaultView(),
+        hoverView: createHoverView(),
+        pressedView: createPressedView(),
+        text: new Text({
+          text: "Water",
+        }),
+        anchor: 0.0,
+      });
+      waterButton.position.set(50, 50);
+      waterButton.onPress.connect(() => insertCellType = CellType.Water);
+      waterButton.zIndex = 2;
+      app.stage.addChild(waterButton);
+      let sandButton = new FancyButton({
+        defaultView: createDefaultViewY(),
+        hoverView: createHoverViewY(),
+        pressedView: createPressedViewY(),
+        text: new Text({
+          text: "Sand",
+        }),
+        anchor: 0.0,
+      });
+      sandButton.position.set(300, 50);
+      sandButton.onPress.connect(() => insertCellType = CellType.Sand);
+      sandButton.zIndex = 2;
+      app.stage.addChild(sandButton);
+      let grassButton = new FancyButton({
+        defaultView: createDefaultViewG(),
+        hoverView: createHoverViewG(),
+        pressedView: createPressedViewG(),
+        text: new Text({
+          text: "Grass",
+        }),
+        anchor: 0.0,
+      });
+      grassButton.position.set(550, 50);
+      grassButton.onPress.connect(() => insertCellType = CellType.Grass);
+      grassButton.zIndex = 2;
+      app.stage.addChild(grassButton);
       app.ticker.add((time) => {
         babyMeltySprite!.rotation += 0.1 * time.deltaTime;
       });
@@ -131,7 +225,7 @@ const App: Component = () => {
   );
 };
 
-function updateTilemap(tilemap: Tilemap, tileset: Texture, map: CellType[][]) {
+function updateTilemap(tilemap: CompositeTilemap, sandTileset: Texture, grassTileset: Texture, map: CellType[][]) {
   tilemap.clear();
   let atY = -32;
   for (let i = 0; i < map.length-1; ++i, atY += 64) {
@@ -143,10 +237,25 @@ function updateTilemap(tilemap: Tilemap, tileset: Texture, map: CellType[][]) {
       let trCell = row[j+1];
       let blCell = nextRow[j];
       let brCell = nextRow[j+1];
-      let idx = (tlCell == CellType.Sand ? 1 : 0)
-              | (trCell == CellType.Sand ? 2 : 0)
-              | (blCell == CellType.Sand ? 4 : 0)
-              | (brCell == CellType.Sand ? 8 : 0);
+      let sandIdx
+        = (tlCell == CellType.Sand ? 1 : 0)
+        | (trCell == CellType.Sand ? 2 : 0)
+        | (blCell == CellType.Sand ? 4 : 0)
+        | (brCell == CellType.Sand ? 8 : 0);
+      let grassIdx
+        = (tlCell == CellType.Grass ? 1 : 0)
+        | (trCell == CellType.Grass ? 2 : 0)
+        | (blCell == CellType.Grass ? 4 : 0)
+        | (brCell == CellType.Grass ? 8 : 0);
+      let idx: number;
+      let tileset: Texture;
+      if (grassIdx != 0) {
+        idx = grassIdx;
+        tileset = grassTileset;
+      } else {
+        idx = sandIdx;
+        tileset = sandTileset;
+      }
       let coords = tilesetCoords[idx];
       tilemap.tile(
         tileset,
