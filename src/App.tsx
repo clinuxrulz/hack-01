@@ -76,7 +76,7 @@ const App: Component = () => {
       });
       const babyMeltyTexture = await Assets.load<Texture>("./baby_melty.png");
       babyMeltySprite = new Sprite(babyMeltyTexture);
-      const sandTileset = await Assets.load<Texture>("./Sprite-0001.png");
+      const sandTileset = await Assets.load<Texture>("./Sprite-0003.png");
       const grassTileset = await Assets.load<Texture>("./Sprite-0002.png");
       tilemap = new CompositeTilemap([
         sandTileset.source,
