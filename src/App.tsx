@@ -1,7 +1,16 @@
 import { Application, Assets, Graphics, Sprite, Text, Texture } from "pixi.js";
-import { Component, createSignal, onCleanup, onMount } from "solid-js";
+import { Component, createComputed, createMemo, createSignal, on, onCleanup, onMount } from "solid-js";
 import { CompositeTilemap, Tilemap } from '@pixi/tilemap';
 import { Button, FancyButton } from "@pixi/ui";
+import { createStore } from "solid-js/store";
+
+class NoTrack<A> {
+  readonly value: A;
+
+  constructor(value: A) {
+    this.value = value;
+  }
+}
 
 enum CellType {
   Water = 0,
@@ -10,6 +19,35 @@ enum CellType {
 };
 
 const App: Component = () => {
+  let [ state, setState, ] = createStore<{
+    mousePos: NoTrack<{ x: number, y: number, }> | undefined
+  }>({
+    mousePos: undefined,
+  });
+  let cellPos = createMemo(
+    () => {
+      let mousePos = state.mousePos?.value;
+      if (mousePos == undefined) {
+        return undefined;
+      }
+      return {
+        x: Math.floor(mousePos.x / 64),
+        y: Math.floor(mousePos.y / 64),
+      };
+    },
+    undefined,
+    {
+      equals(prev, next) {
+        if (next == undefined) {
+          return prev == undefined;
+        } else if (prev == undefined) {
+          return false;
+        } else {
+          return next.x == prev.x && next.y == prev.y;
+        }
+      },
+    }
+  );
   const initMapRows = 50;
   const initMapCols = 50;
   let insertCellType = CellType.Sand;
@@ -74,20 +112,87 @@ const App: Component = () => {
         width: rect.width,
         height: rect.height,
       });
+      {
+        let g = new Graphics()
+          .rect(0, 0, 64, 64)
+          .stroke({
+            width: 2,
+            color: 0xFF0000,
+          });
+        let hasG = false;
+        createComputed(on(
+          cellPos,
+          (cellPos) => {
+            if (cellPos == undefined) {
+              if (hasG) {
+                app.stage.removeChild(g);
+                hasG = false;
+              }
+              return;
+            }
+            if (!hasG) {
+              app.stage.addChild(g);
+              hasG = true;
+            }
+            g.position.set(cellPos.x * 64, cellPos.y * 64);
+          },
+        ));
+      }
       const babyMeltyTexture = await Assets.load<Texture>("./baby_melty.png");
       babyMeltySprite = new Sprite(babyMeltyTexture);
       const sandTileset = await Assets.load<Texture>("./Sprite-0003.png");
-      const grassTileset = await Assets.load<Texture>("./Sprite-0002.png");
+      const grassTileset = await Assets.load<Texture>("./Sprite-0004.png");
       tilemap = new CompositeTilemap([
         sandTileset.source,
         grassTileset.source,
       ]);
       updateTilemap(tilemap, sandTileset, grassTileset, map);
+      let placeTile = () => {
+        let cellPos2 = cellPos();
+        if (cellPos2 == undefined) {
+          return;
+        }
+        let col = cellPos2.x;
+        let row = cellPos2.y;
+        if (col < 0 || col >= initMapCols) {
+          return;
+        }
+        if (row < 0 || row >= initMapRows) {
+          return;
+        }
+        if (tilemap == undefined) {
+          return;
+        }
+        let oldVal = map[row][col];
+        let newVal: CellType;
+        if (insertCellType == CellType.Water) {
+          newVal = 0;
+        } else {
+          newVal = oldVal | insertCellType;
+        }
+        if (newVal === oldVal) {
+          return;
+        }
+        map[row][col] = newVal;
+        let idx = app.stage.getChildIndex(tilemap);
+        app.stage.removeChild(tilemap);
+        tilemap = new CompositeTilemap([sandTileset.source, grassTileset.source]);
+        updateTilemap(tilemap, sandTileset, grassTileset, map);
+        app.stage.addChildAt(tilemap, idx);
+      };
       {
         app.stage.eventMode = "static";
         let pointerDownId: number | undefined = undefined;
         app.stage.on("pointerdown", (e) => {
           pointerDownId = e.pointerId;
+          setState(
+            "mousePos",
+            new NoTrack({
+              x: e.globalX,
+              y: e.globalY,
+            }),
+          );
+          placeTile();
         });
         app.stage.on("pointerup", (e) => {
           if (e.pointerId == pointerDownId) {
@@ -95,35 +200,20 @@ const App: Component = () => {
           }
         });
         app.stage.on("pointermove", (e) => {
+          setState(
+            "mousePos",
+            new NoTrack({
+              x: e.globalX,
+              y: e.globalY,
+            }),
+          );
           if (tilemap == undefined) {
             return;
           }
           if (pointerDownId == undefined) {
             return;
           }
-          let col = Math.floor((e.globalX + 32) / 64);
-          let row = Math.floor((e.globalY + 32) / 64);
-          if (col < 0 || col >= initMapCols) {
-            return;
-          }
-          if (row < 0 || row >= initMapRows) {
-            return;
-          }
-          let oldVal = map[row][col];
-          let newVal: CellType;
-          if (insertCellType == CellType.Water) {
-            newVal = 0;
-          } else {
-            newVal = oldVal | insertCellType;
-          }
-          if (newVal === oldVal) {
-            return;
-          }
-          map[row][col] = newVal;
-          app.stage.removeChild(tilemap);
-          tilemap = new CompositeTilemap([sandTileset.source, grassTileset.source]);
-          updateTilemap(tilemap, sandTileset, grassTileset, map);
-          app.stage.addChild(tilemap);
+          placeTile();
         });
       }
       app.stage.addChild(tilemap);
@@ -232,11 +322,11 @@ const App: Component = () => {
 
 function updateTilemap(tilemap: CompositeTilemap, sandTileset: Texture, grassTileset: Texture, map: CellType[][]) {
   tilemap.clear();
-  let atY = -32;
+  let atY = 32;
   for (let i = 0; i < map.length-1; ++i, atY += 64) {
     let row = map[i];
     let nextRow = map[i+1];
-    let atX = -32;
+    let atX = 32;
     for (let j = 0; j < row.length-1; ++j, atX += 64) {
       let tlCell = row[j];
       let trCell = row[j+1];
