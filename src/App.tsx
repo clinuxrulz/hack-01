@@ -20,9 +20,13 @@ enum CellType {
 
 const App: Component = () => {
   let [ state, setState, ] = createStore<{
-    mousePos: NoTrack<{ x: number, y: number, }> | undefined
+    cameraPos: { x: number, y: number, },
+    mousePos: NoTrack<{ x: number, y: number, }> | undefined,
+    playerPos: NoTrack<{ x: number, y: number, }> | undefined,
   }>({
+    cameraPos: { x: 32, y: 32, },
     mousePos: undefined,
+    playerPos: new NoTrack({ x: 32.0, y: 32.0, }),
   });
   let cellPos = createMemo(
     () => {
@@ -31,8 +35,8 @@ const App: Component = () => {
         return undefined;
       }
       return {
-        x: Math.floor(mousePos.x / 64),
-        y: Math.floor(mousePos.y / 64),
+        x: Math.floor((state.cameraPos.x + mousePos.x) / 64),
+        y: Math.floor((state.cameraPos.y + mousePos.y) / 64),
       };
     },
     undefined,
@@ -134,7 +138,7 @@ const App: Component = () => {
               app.stage.addChild(g);
               hasG = true;
             }
-            g.position.set(cellPos.x * 64, cellPos.y * 64);
+            g.position.set(cellPos.x * 64 - state.cameraPos.x, cellPos.y * 64 - state.cameraPos.y);
           },
         ));
       }
@@ -146,6 +150,7 @@ const App: Component = () => {
         sandTileset.source,
         grassTileset.source,
       ]);
+      tilemap.position.set(-state.cameraPos.x, -state.cameraPos.y);
       updateTilemap(tilemap, sandTileset, grassTileset, map);
       let placeTile = () => {
         let cellPos2 = cellPos();
@@ -177,6 +182,7 @@ const App: Component = () => {
         let idx = app.stage.getChildIndex(tilemap);
         app.stage.removeChild(tilemap);
         tilemap = new CompositeTilemap([sandTileset.source, grassTileset.source]);
+        tilemap.position.set(-state.cameraPos.x, -state.cameraPos.y);
         updateTilemap(tilemap, sandTileset, grassTileset, map);
         app.stage.addChildAt(tilemap, idx);
       };
@@ -217,9 +223,28 @@ const App: Component = () => {
         });
       }
       app.stage.addChild(tilemap);
-      babyMeltySprite.position.set(200, 200);
       babyMeltySprite.zIndex = 1;
       app.stage.sortableChildren = true;
+      {
+        let babyMeltySprite2 = babyMeltySprite;
+        let hasPlayerPos = createMemo(() => state.playerPos != undefined);
+        createComputed(() => {
+          if (!hasPlayerPos()) {
+            return;
+          }
+          let playerPos = () => state.playerPos!.value;
+          app.stage.addChild(babyMeltySprite2);
+          onCleanup(() => {
+            app.stage.removeChild(babyMeltySprite2);
+          });
+          createComputed(on(
+            playerPos,
+            (playerPos) => {
+              babyMeltySprite2.position.set(playerPos.x - state.cameraPos.x, playerPos.y - state.cameraPos.y);
+            }
+          ));
+        });
+      }
       app.stage.addChild(babyMeltySprite);
       const createDefaultView = () => 
         new Graphics()
@@ -274,6 +299,7 @@ const App: Component = () => {
         anchor: 0.0,
       });
       waterButton.position.set(50, 50);
+      waterButton.on("pointerdown", (e) => e.stopPropagation());
       waterButton.onPress.connect(() => insertCellType = CellType.Water);
       waterButton.zIndex = 2;
       app.stage.addChild(waterButton);
@@ -287,6 +313,7 @@ const App: Component = () => {
         anchor: 0.0,
       });
       sandButton.position.set(300, 50);
+      sandButton.on("pointerdown", (e) => e.stopPropagation());
       sandButton.onPress.connect(() => insertCellType = CellType.Sand);
       sandButton.zIndex = 2;
       app.stage.addChild(sandButton);
@@ -300,11 +327,72 @@ const App: Component = () => {
         anchor: 0.0,
       });
       grassButton.position.set(550, 50);
+      grassButton.on("pointerdown", (e) => e.stopPropagation());
       grassButton.onPress.connect(() => insertCellType = CellType.Grass);
       grassButton.zIndex = 2;
       app.stage.addChild(grassButton);
+      let leftDown = false;
+      let rightDown = false;
+      let upDown = false;
+      let downDown = false;
+      let keyDownListener = (e: KeyboardEvent) => {
+        if (e.key == "ArrowLeft") {
+          leftDown = true;
+        } else if (e.key == "ArrowRight") {
+          rightDown = true;
+        } else if (e.key == "ArrowUp") {
+          upDown = true;
+        } else if (e.key == "ArrowDown") {
+          downDown = true;
+        }
+      };
+      let keyUpListener = (e: KeyboardEvent) => {
+        if (e.key == "ArrowLeft") {
+          leftDown = false;
+        } else if (e.key == "ArrowRight") {
+          rightDown = false;
+        } else if (e.key == "ArrowUp") {
+          upDown = false;
+        } else if (e.key == "ArrowDown") {
+          downDown = false;
+        }
+      };
+      document.addEventListener("keydown", keyDownListener);
+      document.addEventListener("keyup", keyUpListener);
+      onCleanup(() => {
+        document.removeEventListener("keydown", keyDownListener);
+        document.removeEventListener("keyup", keyUpListener);
+      });
+      let fps = 60.0;
+      let fpsDelayMs = 1000.0 / fps;
+      let atT = 0.0;
       app.ticker.add((time) => {
-        babyMeltySprite!.rotation += 0.1 * time.deltaTime;
+        atT += time.deltaMS;
+        while (atT > 0.0) {
+          atT -= fpsDelayMs;
+          let mx = 0;
+          let my = 0;
+          if (leftDown) {
+            mx -= 3;
+          }
+          if (rightDown) {
+            mx += 3;
+          }
+          if (upDown) {
+            my -= 3;
+          }
+          if (downDown) {
+            my += 3;
+          }
+          if (mx != 0.0 || my != 0.0) {
+            if (mx != 0.0 && my != 0.0) {
+              mx *= Math.SQRT1_2;
+              my *= Math.SQRT1_2;
+            }
+            babyMeltySprite!.position.x += mx;
+            babyMeltySprite!.position.y += my;
+          }
+        }
       });
       setIsLoading(false);
     })();
