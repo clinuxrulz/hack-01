@@ -366,6 +366,7 @@ const App: Component = () => {
       let fps = 60.0;
       let fpsDelayMs = 1000.0 / fps;
       let atT = 0.0;
+      let outXY = { x: 0.0, y: 0.0, };
       app.ticker.add((time) => {
         atT += time.deltaMS;
         while (atT > 0.0) {
@@ -391,6 +392,18 @@ const App: Component = () => {
             }
             babyMeltySprite!.position.x += mx;
             babyMeltySprite!.position.y += my;
+            let changed = mapBoxCollisionResolution(
+              map,
+              babyMeltySprite!.position.x + state.cameraPos.x,
+              babyMeltySprite!.position.y + state.cameraPos.y,
+              babyMeltySprite!.width,
+              babyMeltySprite!.height,
+              outXY,
+            );
+            if (changed) {
+              babyMeltySprite!.position.x = outXY.x - state.cameraPos.x;
+              babyMeltySprite!.position.y = outXY.y - state.cameraPos.y;
+            }
           }
         }
       });
@@ -407,6 +420,130 @@ const App: Component = () => {
     />
   );
 };
+
+function mapBoxCollisionResolution(
+  map: CellType[][],
+  boxX: number,
+  boxY: number,
+  boxWidth: number,
+  boxHeight: number,
+  outNewBoxPos: { x: number, y: number, },
+): boolean {
+  let changed = false;
+  outNewBoxPos.x = boxX;
+  outNewBoxPos.y = boxY;
+  if (map.length == 0) {
+    return changed;
+  }
+  let minCol = Math.floor(boxX / 64);
+  let minRow = Math.floor(boxY / 64);
+  let maxCol = Math.ceil((boxX + boxWidth) / 64);
+  let maxRow = Math.ceil((boxY + boxHeight) / 64);
+  if (maxRow < 0 || maxCol < 0) {
+    return changed;
+  }
+  if (minCol >= map[0].length || minRow >= map.length) {
+    return changed;
+  }
+  minCol = Math.max(minCol, 0);
+  maxCol = Math.min(map[0].length-1, maxCol);
+  minRow = Math.max(minRow, 0);
+  maxRow = Math.min(map.length-1, maxRow);
+  for (let i = minRow; i <= maxRow; ++i) {
+    let row = map[i];
+    let upRow = i > 0 ? map[i - 1] : undefined;
+    let downRow = i < map.length - 1 ? map[i + 1] : undefined;
+    for (let j = minCol; j <= maxCol; ++j) {
+      let cell = row[j];
+      let leftCell = j > 0 ? row[j - 1] : undefined;
+      let rightCell = j < row.length-1 ? row[j + 1] : undefined;
+      let upCell = upRow?.[j];
+      let downCell = downRow?.[j];
+      let changed2 = mapCellBoxCollisionResolution(
+        i,
+        j,
+        cell,
+        leftCell,
+        rightCell,
+        upCell,
+        downCell,
+        boxX,
+        boxY,
+        boxWidth,
+        boxHeight,
+        outNewBoxPos,
+      );
+      changed ||= changed2;
+      boxX = outNewBoxPos.x;
+      boxY = outNewBoxPos.y;
+    }
+  }
+  return changed;
+}
+
+function mapCellBoxCollisionResolution(
+  row: number,
+  col: number,
+  cell: CellType,
+  leftCell: CellType | undefined,
+  rightCell: CellType | undefined,
+  upCell: CellType | undefined,
+  downCell: CellType | undefined,
+  boxX: number,
+  boxY: number,
+  boxWidth: number,
+  boxHeight: number,
+  outNewBoxPos: { x: number, y: number, },
+): boolean {
+  let cellX = col * 64;
+  let cellY = row * 64;
+  outNewBoxPos.x = boxX;
+  outNewBoxPos.y = boxY;
+  let atSolid = isCellSolid(cell);
+  if (!atSolid) {
+    return false;
+  }
+  let changed = false;
+  let leftSolid = isCellSolid(leftCell);
+  let rightSolid = isCellSolid(rightCell);
+  let upSolid = isCellSolid(upCell);
+  let downSolid = isCellSolid(downCell);
+  if (boxX + boxWidth >= cellX && boxX <= cellX + 64) {
+    if (!upSolid && boxY + boxHeight > cellY && boxY < cellY) {
+      boxY = cellY - boxHeight;
+      outNewBoxPos.y = boxY;
+      changed = true;
+    }
+    if (!downSolid && boxY < cellY + 64 && boxY + boxHeight > cellY + 64) {
+      boxY = cellY + 64;
+      outNewBoxPos.y = boxY;
+      changed = true;
+    }
+  }
+  if (boxY + boxHeight >= cellY && boxY <= cellY + 64) {
+    if (!leftSolid && boxX + boxWidth > cellX && boxX < cellX) {
+      boxX = cellX - boxWidth;
+      outNewBoxPos.x = boxX;
+      changed = true;
+    }
+    if (!rightSolid && boxX < cellX + 64 && boxX + boxWidth > cellX + 64) {
+      boxX = cellX + 64;
+      outNewBoxPos.x = boxX;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+function isCellSolid(cell: CellType | undefined): boolean {
+  if (cell == undefined) {
+    return true;
+  }
+  if (cell == CellType.Water) {
+    return true;
+  }
+  return false;
+}
 
 function updateTilemap(tilemap: CompositeTilemap, sandTileset: Texture, grassTileset: Texture, map: CellType[][]) {
   tilemap.clear();
