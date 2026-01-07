@@ -508,28 +508,37 @@ function mapCellBoxCollisionResolution(
   let rightSolid = isCellSolid(rightCell);
   let upSolid = isCellSolid(upCell);
   let downSolid = isCellSolid(downCell);
-  if (boxX + boxWidth >= cellX && boxX <= cellX + 64) {
-    if (!upSolid && boxY + boxHeight > cellY && boxY < cellY) {
-      boxY = cellY - boxHeight;
-      outNewBoxPos.y = boxY;
-      changed = true;
+  let overlapX = Math.max(boxX + boxWidth - cellX, cellX + 64 - boxX);
+  let overlapY = Math.max(boxY + boxHeight - cellY, cellY + 64 - boxY);
+  let doXFirst = overlapX < overlapY;
+  for (let i = 0; i < 2; ++i) {
+    if (doXFirst && i == 0 || !doXFirst && i == 1) {
+      if (boxX + boxWidth > cellX && boxX < cellX + 64) {
+        if (!upSolid && boxY + boxHeight > cellY && boxY < cellY) {
+          boxY = cellY - boxHeight;
+          outNewBoxPos.y = boxY;
+          changed = true;
+        }
+        if (!downSolid && boxY < cellY + 64 && boxY + boxHeight > cellY + 64) {
+          boxY = cellY + 64;
+          outNewBoxPos.y = boxY;
+          changed = true;
+        }
+      }
     }
-    if (!downSolid && boxY < cellY + 64 && boxY + boxHeight > cellY + 64) {
-      boxY = cellY + 64;
-      outNewBoxPos.y = boxY;
-      changed = true;
-    }
-  }
-  if (boxY + boxHeight >= cellY && boxY <= cellY + 64) {
-    if (!leftSolid && boxX + boxWidth > cellX && boxX < cellX) {
-      boxX = cellX - boxWidth;
-      outNewBoxPos.x = boxX;
-      changed = true;
-    }
-    if (!rightSolid && boxX < cellX + 64 && boxX + boxWidth > cellX + 64) {
-      boxX = cellX + 64;
-      outNewBoxPos.x = boxX;
-      changed = true;
+    if (!doXFirst && i == 0 || doXFirst && i == 1) {
+      if (boxY + boxHeight > cellY && boxY < cellY + 64) {
+        if (!leftSolid && boxX + boxWidth > cellX && boxX < cellX) {
+          boxX = cellX - boxWidth;
+          outNewBoxPos.x = boxX;
+          changed = true;
+        }
+        if (!rightSolid && boxX < cellX + 64 && boxX + boxWidth > cellX + 64) {
+          boxX = cellX + 64;
+          outNewBoxPos.x = boxX;
+          changed = true;
+        }
+      }
     }
   }
   return changed;
