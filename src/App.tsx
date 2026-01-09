@@ -1,5 +1,5 @@
 import { Application, Assets, Graphics, Sprite, Text, Texture } from "pixi.js";
-import { Component, createComputed, createMemo, createSignal, on, onCleanup, onMount } from "solid-js";
+import { batch, Component, createComputed, createMemo, createSignal, on, onCleanup, onMount } from "solid-js";
 import { CompositeTilemap, Tilemap } from '@pixi/tilemap';
 import { Button, FancyButton } from "@pixi/ui";
 import { createStore } from "solid-js/store";
@@ -23,11 +23,33 @@ const App: Component = () => {
     cameraPos: { x: number, y: number, },
     mousePos: NoTrack<{ x: number, y: number, }> | undefined,
     playerPos: NoTrack<{ x: number, y: number, }> | undefined,
+    companionPos: NoTrack<{ x: number, y: number }> | undefined,
   }>({
     cameraPos: { x: 32, y: 32, },
     mousePos: undefined,
     playerPos: new NoTrack({ x: 32.0, y: 32.0, }),
+    companionPos: new NoTrack({ x: 32, y: 32, }),
   });
+  const followPathMaxDist = 64;
+  let followPathDist = 0.0;
+  let followPath: { x: number, y: number, }[] = [];
+  let manhattinDist = (a: { x: number, y: number, }, b: { x: number, y: number, }) => {
+    return Math.abs(b.x - a.x) + Math.abs(b.y - a.y);
+  };
+  let movePlayerTo = (pt: { x: number, y: number, }) => {
+    setState("playerPos", new NoTrack(pt));
+    followPath.push(pt);
+    if (followPath.length > 1) {
+      followPathDist += manhattinDist(followPath[followPath.length-2], pt);
+      followPath.reverse();
+      while (followPathDist >= followPathMaxDist && followPath.length > 1) {
+        followPathDist -= manhattinDist(followPath[followPath.length-1], followPath[followPath.length-2]);
+        followPath.pop();
+      }
+      followPath.reverse();
+    }
+    setState("companionPos", new NoTrack(followPath[0]));
+  };
   let cellPos = createMemo(
     () => {
       let mousePos = state.mousePos?.value;
@@ -87,6 +109,8 @@ const App: Component = () => {
   let [ canvas, setCanvas, ] = createSignal<HTMLCanvasElement>();
   const app = new Application();
   let babyMeltySprite: Sprite | undefined = undefined;
+  let cubeySprite: Sprite | undefined = undefined;
+  let meltyTrace: { x: number, y: number, }[] = [];
   let [ isLoading, setIsLoading, ] = createSignal(true);
   let tilemap: CompositeTilemap | undefined = undefined;
   onMount(() => {
@@ -143,7 +167,9 @@ const App: Component = () => {
         ));
       }
       const babyMeltyTexture = await Assets.load<Texture>("./baby_melty.png");
+      const cubeyTexture = await Assets.load<Texture>("./cubey.png");
       babyMeltySprite = new Sprite(babyMeltyTexture);
+      cubeySprite = new Sprite(cubeyTexture);
       const sandTileset = await Assets.load<Texture>("./Sprite-0003.png");
       const grassTileset = await Assets.load<Texture>("./Sprite-0004.png");
       tilemap = new CompositeTilemap([
@@ -223,7 +249,8 @@ const App: Component = () => {
         });
       }
       app.stage.addChild(tilemap);
-      babyMeltySprite.zIndex = 1;
+      babyMeltySprite.zIndex = 2;
+      cubeySprite.zIndex = 1;
       app.stage.sortableChildren = true;
       {
         let babyMeltySprite2 = babyMeltySprite;
@@ -245,7 +272,54 @@ const App: Component = () => {
           ));
         });
       }
-      app.stage.addChild(babyMeltySprite);
+      {
+        let cubeySprite2 = cubeySprite;
+        let hasPos = createMemo(() => state.companionPos != undefined);
+        createComputed(() => {
+          if (!hasPos()) {
+            return;
+          }
+          let pos = () => state.companionPos!.value;
+          app.stage.addChild(cubeySprite2);
+          onCleanup(() => {
+            app.stage.removeChild(cubeySprite2);
+          });
+          createComputed(on(
+            pos,
+            (pos) => {
+              cubeySprite2.position.set(pos.x - state.cameraPos.x, pos.y - state.cameraPos.y);
+            },
+          ));
+        });
+      }
+      {
+        let babyMeltySprite2 = babyMeltySprite;
+        let cubeySprite2 = cubeySprite;
+        let hasPlayerPos = createMemo(() => state.playerPos != undefined);
+        let hasCompPos = createMemo(() => state.companionPos != undefined);
+        createComputed(() => {
+          if (!hasPlayerPos()) {
+            return;
+          }
+          if (!hasCompPos()) {
+            return;
+          }
+          let playerPos = () => state.playerPos!.value;
+          let compPos = () => state.companionPos!.value;
+          createComputed(on(
+            [ playerPos, compPos, ],
+            ([ playerPos, compPos, ]) => {
+              if (playerPos.y < compPos.y) {
+                babyMeltySprite2.zIndex = 2;
+                cubeySprite2.zIndex = 3;
+              } else {
+                babyMeltySprite2.zIndex = 3;
+                cubeySprite2.zIndex = 2;
+              }
+            },
+          ));
+        });
+      }
       const createDefaultView = () => 
         new Graphics()
           .rect(0, 0, 200, 60)
@@ -400,10 +474,7 @@ const App: Component = () => {
               babyMeltySprite!.height,
               outXY,
             );
-            if (changed) {
-              babyMeltySprite!.position.x = outXY.x - state.cameraPos.x;
-              babyMeltySprite!.position.y = outXY.y - state.cameraPos.y;
-            }
+            movePlayerTo({ x: outXY.x, y: outXY.y, });
           }
         }
       });
