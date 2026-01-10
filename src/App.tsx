@@ -3,6 +3,7 @@ import { batch, Component, createComputed, createMemo, createSignal, on, onClean
 import { CompositeTilemap, Tilemap } from '@pixi/tilemap';
 import { Button, FancyButton } from "@pixi/ui";
 import { createStore } from "solid-js/store";
+import { SwordSwing } from "./SwordSwing";
 
 class NoTrack<A> {
   readonly value: A;
@@ -30,6 +31,7 @@ const App: Component = () => {
     playerPos: new NoTrack({ x: 32.0, y: 32.0, }),
     companionPos: new NoTrack({ x: 32, y: 32, }),
   });
+  let swordSwing = new SwordSwing();
   const followPathMaxDist = 64;
   let followPathDist = 0.0;
   let followPath: { x: number, y: number, }[] = [];
@@ -110,7 +112,7 @@ const App: Component = () => {
   const app = new Application();
   let babyMeltySprite: Sprite | undefined = undefined;
   let cubeySprite: Sprite | undefined = undefined;
-  let meltyTrace: { x: number, y: number, }[] = [];
+  let swordSprite: Sprite | undefined = undefined;
   let [ isLoading, setIsLoading, ] = createSignal(true);
   let tilemap: CompositeTilemap | undefined = undefined;
   onMount(() => {
@@ -168,8 +170,14 @@ const App: Component = () => {
       }
       const babyMeltyTexture = await Assets.load<Texture>("./baby_melty.png");
       const cubeyTexture = await Assets.load<Texture>("./cubey.png");
+      const swordTexture = await Assets.load<Texture>("./sword.png");
       babyMeltySprite = new Sprite(babyMeltyTexture);
       cubeySprite = new Sprite(cubeyTexture);
+      swordSprite = new Sprite({
+        texture: swordTexture,
+        scale: 2.0,
+      });
+      swordSprite.position.set(60, 0);
       const sandTileset = await Assets.load<Texture>("./Sprite-0003.png");
       const grassTileset = await Assets.load<Texture>("./Sprite-0004.png");
       tilemap = new CompositeTilemap([
@@ -251,6 +259,7 @@ const App: Component = () => {
       app.stage.addChild(tilemap);
       babyMeltySprite.zIndex = 2;
       cubeySprite.zIndex = 1;
+      babyMeltySprite.addChild(swordSprite);
       app.stage.sortableChildren = true;
       {
         let babyMeltySprite2 = babyMeltySprite;
